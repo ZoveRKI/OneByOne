@@ -1,0 +1,345 @@
+{
+  "version": 1,
+  "title": "Todo 支持截止日期",
+  "summary": "给待办事项增加可选的截止日期，并在界面上标出已过期的任务。",
+  "base": "a1b2c3d",
+  "files": [
+    { "path": "src/types/todo.ts", "status": "modified" },
+    { "path": "src/utils/date.ts", "status": "added" },
+    { "path": "src/api/todos.ts", "status": "modified" },
+    { "path": "src/components/TodoItem.tsx", "status": "modified" },
+    { "path": "src/components/TodoItem.css", "status": "modified" },
+    { "path": "tests/date.test.ts", "status": "added" },
+    { "path": "src/config.ts", "status": "modified" }
+  ],
+  "hunks": [
+    {
+      "id": "h1",
+      "file": "src/types/todo.ts",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        " export interface Todo {",
+        "   id: string;",
+        "   title: string;",
+        "   done: boolean;",
+        "+  /** 截止日期，格式 YYYY-MM-DD */",
+        "+  dueDate?: string;",
+        " }"
+      ]
+    },
+    {
+      "id": "h2",
+      "file": "src/utils/date.ts",
+      "oldStart": 0,
+      "newStart": 1,
+      "lines": [
+        "+/**",
+        "+ * 判断待办是否已过期（截止日期早于今天）。",
+        "+ * 截止日期和今天都按本地零点比较，避免时区影响。",
+        "+ */",
+        "+export function isOverdue(dueDate?: string): boolean {",
+        "+  if (!dueDate) return false;",
+        "+  const today = new Date();",
+        "+  today.setHours(0, 0, 0, 0);",
+        "+  return new Date(`${dueDate}T00:00:00`) < today;",
+        "+}"
+      ]
+    },
+    {
+      "id": "h3",
+      "file": "src/api/todos.ts",
+      "oldStart": 7,
+      "newStart": 7,
+      "lines": [
+        "   return todos;",
+        " }",
+        " ",
+        "-export function createTodo(title: string): Todo {",
+        "-  const todo: Todo = { id: uid(), title, done: false };",
+        "+export function createTodo(title: string, dueDate?: string): Todo {",
+        "+  if (dueDate !== undefined && !/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)) {",
+        "+    throw new Error(`dueDate 格式应为 YYYY-MM-DD：${dueDate}`);",
+        "+  }",
+        "+  const todo: Todo = { id: uid(), title, done: false, dueDate };",
+        "   todos.push(todo);",
+        "   return todo;",
+        " }"
+      ]
+    },
+    {
+      "id": "h4",
+      "file": "src/components/TodoItem.tsx",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        " import type { Todo } from '../types/todo';",
+        "+import { isOverdue } from '../utils/date';",
+        " import './TodoItem.css';",
+        " ",
+        " export function TodoItem({ todo }: { todo: Todo }) {",
+        "+  const overdue = !todo.done && isOverdue(todo.dueDate);",
+        "   return (",
+        "-    <li className=\"todo-item\">",
+        "+    <li className={overdue ? 'todo-item overdue' : 'todo-item'}>",
+        "       <span>{todo.title}</span>",
+        "+      {todo.dueDate && <time dateTime={todo.dueDate}>{todo.dueDate}</time>}",
+        "     </li>",
+        "   );",
+        " }"
+      ]
+    },
+    {
+      "id": "h5",
+      "file": "src/components/TodoItem.css",
+      "oldStart": 2,
+      "newStart": 2,
+      "lines": [
+        "   display: flex;",
+        "   gap: 8px;",
+        " }",
+        "+",
+        "+.todo-item time {",
+        "+  color: #888;",
+        "+  font-size: 12px;",
+        "+}",
+        "+",
+        "+.todo-item.overdue time {",
+        "+  color: #d33;",
+        "+}"
+      ]
+    },
+    {
+      "id": "h6",
+      "file": "tests/date.test.ts",
+      "oldStart": 0,
+      "newStart": 1,
+      "lines": [
+        "+import { isOverdue } from '../src/utils/date';",
+        "+",
+        "+/** 按本地时区格式化为 YYYY-MM-DD */",
+        "+const ymd = (d: Date) => d.toLocaleDateString('sv-SE');",
+        "+",
+        "+test('没有截止日期不算过期', () => {",
+        "+  expect(isOverdue(undefined)).toBe(false);",
+        "+});",
+        "+",
+        "+test('今天截止不算过期', () => {",
+        "+  expect(isOverdue(ymd(new Date()))).toBe(false);",
+        "+});",
+        "+",
+        "+test('过去的日期算过期', () => {",
+        "+  expect(isOverdue('2000-01-01')).toBe(true);",
+        "+});"
+      ]
+    },
+    {
+      "id": "h7",
+      "file": "src/config.ts",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        " export const API_BASE = '/api';",
+        "-export const PAGE_SIZE = 20;",
+        "+export const PAGE_SIZE = 50;",
+        " export const ENABLE_CACHE = true;"
+      ]
+    },
+    {
+      "id": "p1",
+      "file": "src/components/TodoItem.tsx",
+      "final": false,
+      "oldStart": 4,
+      "newStart": 4,
+      "lines": [
+        " export function TodoItem({ todo }: { todo: Todo }) {",
+        "   return (",
+        "     <li className=\"todo-item\">",
+        "       <span>{todo.title}</span>",
+        "+      {todo.dueDate && <time dateTime={todo.dueDate}>{todo.dueDate}</time>}",
+        "     </li>",
+        "   );",
+        " }"
+      ]
+    },
+    {
+      "id": "p2",
+      "file": "src/utils/date.ts",
+      "final": false,
+      "oldStart": 0,
+      "newStart": 1,
+      "lines": [
+        "+export function isOverdue(dueDate?: string): boolean {",
+        "+  if (!dueDate) return false;",
+        "+  return new Date(dueDate) < new Date();",
+        "+}"
+      ]
+    },
+    {
+      "id": "p3",
+      "file": "src/components/TodoItem.tsx",
+      "final": false,
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        " import type { Todo } from '../types/todo';",
+        "+import { isOverdue } from '../utils/date';",
+        " import './TodoItem.css';",
+        " ",
+        " export function TodoItem({ todo }: { todo: Todo }) {",
+        "+  const overdue = !todo.done && isOverdue(todo.dueDate);",
+        "   return (",
+        "-    <li className=\"todo-item\">",
+        "+    <li className={overdue ? 'todo-item overdue' : 'todo-item'}>",
+        "       <span>{todo.title}</span>",
+        "       {todo.dueDate && <time dateTime={todo.dueDate}>{todo.dueDate}</time>}",
+        "     </li>"
+      ]
+    },
+    {
+      "id": "p4",
+      "file": "src/utils/date.ts",
+      "final": false,
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        "+/**",
+        "+ * 判断待办是否已过期（截止日期早于今天）。",
+        "+ * 截止日期和今天都按本地零点比较，避免时区影响。",
+        "+ */",
+        " export function isOverdue(dueDate?: string): boolean {",
+        "   if (!dueDate) return false;",
+        "-  return new Date(dueDate) < new Date();",
+        "+  const today = new Date();",
+        "+  today.setHours(0, 0, 0, 0);",
+        "+  return new Date(`${dueDate}T00:00:00`) < today;",
+        " }"
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "overview",
+      "chapter": "概览",
+      "title": "先看整体：这次改了什么",
+      "hunks": [],
+      "explain": "这次改动给待办事项加上**截止日期**，并把已过期的任务标红。\n\n阅读顺序是自底向上：\n\n1. 数据层：类型定义和日期工具函数\n2. 接口层：创建待办时接收截止日期\n3. 界面层：显示日期、标记过期\n4. 测试：覆盖日期比较的边界情况\n\n左侧文件树里，灰色的文件表示还没讲到。"
+    },
+    {
+      "id": "types",
+      "chapter": "数据层",
+      "kind": "add",
+      "title": "Todo 类型新增可选字段 dueDate",
+      "hunks": ["h1"],
+      "related": ["date", "api", "item"],
+      "explain": "先看数据结构：给 `Todo` 增加可选字段 `dueDate`，格式为 `YYYY-MM-DD`。\n\n- 设为**可选**，旧数据不需要迁移\n- 后面所有改动都围绕这个字段展开"
+    },
+    {
+      "id": "date",
+      "chapter": "数据层",
+      "kind": "add",
+      "title": "新增 isOverdue() 判断是否过期",
+      "hunks": ["h2"],
+      "related": ["item", "test"],
+      "explain": "新增一个纯函数，方便单独测试：\n\n- 没有截止日期：不算过期\n- 截止日期和今天都对齐到**本地零点**再比较\n\n为什么不直接写 `new Date(dueDate) < new Date()`？只有日期的字符串会按 UTC 解析，而且是在和「当前时刻」比较，今天截止的任务会被误判为已过期。"
+    },
+    {
+      "id": "api",
+      "chapter": "接口层",
+      "kind": "modify",
+      "title": "createTodo 接收并校验 dueDate",
+      "hunks": ["h3"],
+      "related": ["types"],
+      "explain": "在入口处校验日期格式，非法值直接抛错，不让脏数据进入存储。\n\n新参数是可选的，**原有调用方不受影响**。"
+    },
+    {
+      "id": "item",
+      "chapter": "界面层",
+      "kind": "modify",
+      "title": "显示截止日期，过期任务标红",
+      "hunks": ["h4", "h5"],
+      "related": ["date"],
+      "explain": "界面层只做两件事：\n\n1. 有截止日期就显示出来\n2. 未完成且已过期时，加上 `overdue` 样式\n\n是否过期直接复用 `isOverdue()`，组件里不写判断逻辑。对应的样式写在同一组件的 CSS 里，所以这一步跨了两个文件。"
+    },
+    {
+      "id": "test",
+      "chapter": "测试",
+      "kind": "test",
+      "title": "为 isOverdue() 补充单元测试",
+      "hunks": ["h6"],
+      "related": ["date"],
+      "explain": "三个用例覆盖关键边界。其中「今天截止不算过期」专门用来防止日期比较的问题再次出现。\n\n`ymd()` 用 `sv-SE` 区域格式化日期，是取得本地 `YYYY-MM-DD` 的常用写法。"
+    }
+  ],
+  "timeline": [
+    {
+      "id": "e1",
+      "time": "14:02:05",
+      "kind": "modify",
+      "title": "先改界面：显示截止日期",
+      "hunks": ["p1"],
+      "related": ["e2"],
+      "explain": "AI 先从界面入手，直接用了 `todo.dueDate`。但这时 `Todo` 类型里还没有这个字段，类型检查报错。"
+    },
+    {
+      "id": "e2",
+      "time": "14:02:31",
+      "kind": "modify",
+      "title": "回头给 Todo 补上 dueDate",
+      "hunks": ["h1"],
+      "related": ["e1"],
+      "explain": "看到类型报错后，回头补上字段。"
+    },
+    {
+      "id": "e3",
+      "time": "14:03:10",
+      "kind": "add",
+      "title": "新建 isOverdue()（初版）",
+      "hunks": ["p2"],
+      "related": ["e6"],
+      "explain": "初版直接用 `new Date(dueDate)` 和当前时刻比较，这里留下了一个问题，第 6 步才发现。"
+    },
+    {
+      "id": "e4",
+      "time": "14:03:52",
+      "kind": "modify",
+      "title": "引入 isOverdue()，过期标红",
+      "hunks": ["p3", "h5"],
+      "explain": "在 `TodoItem` 里调用 `isOverdue()`，并补上对应的样式。"
+    },
+    {
+      "id": "e5",
+      "time": "14:04:40",
+      "kind": "test",
+      "title": "补充单元测试，运行失败",
+      "hunks": ["h6"],
+      "related": ["e6"],
+      "explain": "运行测试后，「今天截止不算过期」这条用例失败了。"
+    },
+    {
+      "id": "e6",
+      "time": "14:05:18",
+      "kind": "rework",
+      "title": "返工：修复日期比较",
+      "hunks": ["p4"],
+      "related": ["e3", "e5"],
+      "explain": "初版拿截止日期和「当前时刻」比较，而且只有日期的字符串按 UTC 解析，结果今天截止的任务被误判为过期。改为都对齐到本地零点再比较。\n\n在讲解顺序里，这次返工直接合并进了「新增 isOverdue()」那一步。"
+    },
+    {
+      "id": "e7",
+      "time": "14:05:47",
+      "kind": "modify",
+      "title": "顺手把 PAGE_SIZE 改成了 50",
+      "hunks": ["h7"],
+      "explain": "这一处和截止日期功能无关，讲解里也没有提到。切回「讲解顺序」可以看到，覆盖率检查把它标成了**未讲解的改动**。"
+    },
+    {
+      "id": "e8",
+      "time": "14:06:20",
+      "kind": "modify",
+      "title": "最后才改接口层",
+      "hunks": ["h3"],
+      "explain": "最后才想到 `createTodo` 也要接收并校验 `dueDate`。"
+    }
+  ]
+}
