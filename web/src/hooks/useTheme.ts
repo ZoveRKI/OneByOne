@@ -16,15 +16,19 @@ function readPref(): ThemePref {
   }
 }
 
-/** 主题偏好：跟随系统 / 浅色 / 深色，保存在 localStorage */
-export function useTheme() {
+/**
+ * 主题偏好：跟随系统 / 浅色 / 深色，保存在 localStorage。
+ * 在 MCP 客户端里时传入客户端的主题，「跟随系统」改为跟随客户端
+ */
+export function useTheme(hostTheme?: 'light' | 'dark') {
   const [pref, setPref] = useState<ThemePref>(readPref);
 
   useEffect(() => {
     const query =
       typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
     const apply = () => {
-      const dark = pref === 'dark' || (pref === 'auto' && Boolean(query?.matches));
+      const system = hostTheme ? hostTheme === 'dark' : Boolean(query?.matches);
+      const dark = pref === 'dark' || (pref === 'auto' && system);
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     };
     apply();
@@ -34,10 +38,10 @@ export function useTheme() {
     } catch {
       // 存不下也不影响本次使用
     }
-    if (pref !== 'auto' || !query) return;
+    if (pref !== 'auto' || hostTheme || !query) return;
     query.addEventListener('change', apply);
     return () => query.removeEventListener('change', apply);
-  }, [pref]);
+  }, [pref, hostTheme]);
 
   const cycle = useCallback(() => {
     setPref((p) => THEMES[(THEMES.indexOf(p) + 1) % THEMES.length] ?? 'auto');

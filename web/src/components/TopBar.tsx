@@ -2,7 +2,17 @@ import type { Dispatch } from 'react';
 import type { Model, Track } from '../core/model';
 import { THEME_LABEL, type ThemePref } from '../hooks/useTheme';
 import { SPEEDS, type Action, type PlayerState } from '../state/player';
-import { HelpIcon, NextIcon, OpenIcon, PauseIcon, PlayIcon, PrevIcon, ThemeIcon } from './icons';
+import {
+  ExitFullscreenIcon,
+  FullscreenIcon,
+  HelpIcon,
+  NextIcon,
+  OpenIcon,
+  PauseIcon,
+  PlayIcon,
+  PrevIcon,
+  ThemeIcon,
+} from './icons';
 import { Scrubber } from './Scrubber';
 
 interface Props {
@@ -12,8 +22,11 @@ interface Props {
   dispatch: Dispatch<Action>;
   themePref: ThemePref;
   onCycleTheme: () => void;
-  onOpenFile: () => void;
+  /** 在 MCP 客户端的对话里时不提供，不显示打开文件的按钮 */
+  onOpenFile?: () => void;
   onHelp: () => void;
+  /** MCP 客户端支持全屏时才提供 */
+  fullscreen?: { active: boolean; onToggle: () => void };
 }
 
 const MODES = [
@@ -30,6 +43,7 @@ export function TopBar({
   onCycleTheme,
   onOpenFile,
   onHelp,
+  fullscreen,
 }: Props) {
   const total = track.items.length;
   const playLabel = state.playing ? '暂停' : '播放';
@@ -96,15 +110,28 @@ export function TopBar({
         </div>
       )}
       <div className="tools">
-        <button
-          className="icon-btn"
-          type="button"
-          title="打开 JSON 文件（O）"
-          aria-label="打开 JSON 文件"
-          onClick={onOpenFile}
-        >
-          <OpenIcon />
-        </button>
+        {onOpenFile && (
+          <button
+            className="icon-btn"
+            type="button"
+            title="打开 JSON 文件（O）"
+            aria-label="打开 JSON 文件"
+            onClick={onOpenFile}
+          >
+            <OpenIcon />
+          </button>
+        )}
+        {fullscreen && (
+          <button
+            className="icon-btn"
+            type="button"
+            title={fullscreen.active ? '退出全屏' : '全屏显示'}
+            aria-label={fullscreen.active ? '退出全屏' : '全屏显示'}
+            onClick={fullscreen.onToggle}
+          >
+            {fullscreen.active ? <ExitFullscreenIcon /> : <FullscreenIcon />}
+          </button>
+        )}
         <button
           className="icon-btn"
           type="button"

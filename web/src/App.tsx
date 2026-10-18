@@ -7,8 +7,10 @@ import { Sidebar } from './components/Sidebar';
 import { DiffView, Explain, StepHead } from './components/StepView';
 import { TopBar } from './components/TopBar';
 import type { Model } from './core/model';
+import type { Bridge } from './data/mcp';
 import { loadInitial, parseWalkthrough, type Initial } from './data/source';
 import { useFileDrop } from './hooks/useFileDrop';
+import { useHostView } from './hooks/useHostView';
 import { useAutoplay, useHashSync } from './hooks/usePlayerEffects';
 import { useTheme } from './hooks/useTheme';
 import { errorMessage } from './lib/format';
@@ -16,11 +18,19 @@ import { initialState, readHash, reducer, trackOf } from './state/player';
 
 const TOAST_MS = 6000;
 
-export function App({ load = loadInitial }: { load?: () => Promise<Initial> }) {
+interface Props {
+  load?: (bridge: Bridge | null) => Promise<Initial>;
+  /** 页面嵌在 iframe 里时和 MCP 客户端的连接，见 data/mcp.ts */
+  bridge?: Bridge | null;
+}
+
+export function App({ load = loadInitial, bridge = null }: Props) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [landing, setLanding] = useState<{ message: string; error: boolean } | null>(null);
   const [toast, setToast] = useState<{ text: string; id: number } | null>(null);
-  const { pref: themePref, cycle: cycleTheme } = useTheme();
+  // 握手成功后才有：在 MCP 客户端的对话里显示
+  const host = useHostView(bridge);
+  const { pref: themePref, cycle: cycleTheme } = useTheme(host?.theme);
   const fileInput = useRef<HTMLInputElement>(null);
   const help = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLElement>(null);
@@ -67,15 +77,28 @@ export function App({ load = loadInitial }: { load?: () => Promise<Initial> }) {
 
   useEffect(() => {
     let cancelled = false;
-    void load().then((initial) => {
+    void load(bridge).then((initial) => {
       if (cancelled) return;
       if (initial.kind === 'data') loadText(initial.text, initial.name, initial.restore);
-      else setLanding({ message: initial.message, error: false });
+      else if (initial.kind === 'landing') setLanding({ message: initial.message, error: false });
+      // 在 MCP 客户端里：数据随工具结果送来，还没送到时先显示等待提示
+      else if (!modelRef.current)
+        setLanding((current) => current ?? { message: '正在等待讲解数据……', error: false });
     });
     return () => {
       cancelled = true;
     };
-  }, [load, loadText]);
+  }, [load, bridge, loadText]);
+
+  // 工具结果随时可能送来，握手超时以后也一样：讲解数据直接加载，出错时显示工具返回的说明
+  useEffect(
+    () =>
+      bridge?.onResult((initial) => {
+        if (initial.kind === 'data') loadText(initial.text, initial.name, false);
+        else if (initial.kind === 'landing') showError(initial.message);
+      }),
+    [bridge, loadText, showError],
+  );
 
   useEffect(() => {
     if (!toast) return;
@@ -204,8 +227,13 @@ export function App({ load = loadInitial }: { load?: () => Promise<Initial> }) {
             dispatch={dispatch}
             themePref={themePref}
             onCycleTheme={cycleTheme}
-            onOpenFile={pickFile}
+            onOpenFile={host ? undefined : pickFile}
             onHelp={openHelp}
+            fullscreen={
+              bridge && host?.canFullscreen
+                ? { active: host.displayMode === 'fullscreen', onToggle: bridge.toggleFullscreen }
+                : undefined
+            }
           />
           <main className="main">
             <Sidebar
@@ -245,7 +273,14 @@ export function App({ load = loadInitial }: { load?: () => Promise<Initial> }) {
           </main>
         </div>
       ) : (
-        landing && <Landing message={landing.message} error={landing.error} onOpen={pickFile} />
+        landing && (
+          <Landing
+            message={landing.message}
+            error={landing.error}
+            onOpen={pickFile}
+            embedded={host !== null}
+          />
+        )
       )}
       <input
         ref={fileInput}

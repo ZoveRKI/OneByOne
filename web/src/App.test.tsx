@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import type { Bridge, HostView } from './data/mcp';
 import type { Initial } from './data/source';
 
 const data = {
@@ -17,6 +18,25 @@ const data = {
 
 const loadOf = (initial: Initial) => () => Promise.resolve(initial);
 const title = (name: string) => screen.getByRole('heading', { level: 1, name });
+
+/** 模拟已经握手成功的 MCP 客户端，send 相当于客户端送来工具结果 */
+function fakeBridge(view: HostView) {
+  let listener: ((initial: Initial) => void) | null = null;
+  const toggleFullscreen = vi.fn<() => void>();
+  const bridge: Bridge = {
+    ready: Promise.resolve(true),
+    onResult(next) {
+      listener = next;
+      return () => {
+        listener = null;
+      };
+    },
+    getView: () => view,
+    subscribe: () => () => {},
+    toggleFullscreen,
+  };
+  return { bridge, toggleFullscreen, send: (initial: Initial) => act(() => listener?.(initial)) };
+}
 
 describe('App', () => {
   it('加载数据后可以用按钮和键盘逐步切换', async () => {
@@ -52,5 +72,35 @@ describe('App', () => {
     render(<App load={loadOf({ kind: 'data', text: '{', name: 'bad.json', restore: false })} />);
     expect(await screen.findByText(/bad\.json 不是合法的 JSON/)).toBeTruthy();
     expect(screen.getByRole('button', { name: '选择文件' })).toBeTruthy();
+  });
+});
+
+describe('App 在 MCP 客户端的对话里', () => {
+  it('等工具结果送来数据，跟随客户端的主题，可以全屏', async () => {
+    const { bridge, send, toggleFullscreen } = fakeBridge({
+      theme: 'dark',
+      displayMode: 'inline',
+      canFullscreen: true,
+    });
+    render(<App load={loadOf({ kind: 'host' })} bridge={bridge} />);
+    expect(await screen.findByText('正在等待讲解数据……')).toBeTruthy();
+    // 数据由客户端送来，不提示选择文件
+    expect(screen.queryByRole('button', { name: '选择文件' })).toBeNull();
+
+    send({ kind: 'data', text: JSON.stringify(data), name: '讲解数据', restore: false });
+    expect(title('概览')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '打开 JSON 文件' })).toBeNull();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    fireEvent.click(screen.getByRole('button', { name: '全屏显示' }));
+    expect(toggleFullscreen).toHaveBeenCalled();
+  });
+
+  it('工具出错时显示返回的说明', async () => {
+    const { bridge, send } = fakeBridge({ displayMode: 'inline', canFullscreen: false });
+    render(<App load={loadOf({ kind: 'host' })} bridge={bridge} />);
+    await screen.findByText('正在等待讲解数据……');
+    send({ kind: 'landing', message: '错误：请先调用 get_changes' });
+    expect(screen.getByText('错误：请先调用 get_changes')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '全屏显示' })).toBeNull();
   });
 });

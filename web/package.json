@@ -17,6 +17,7 @@
     "check": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test"
   },
   "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^2.0.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

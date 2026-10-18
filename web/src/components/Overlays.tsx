@@ -1,24 +1,36 @@
 import type { Ref } from 'react';
 import { CloseIcon } from './icons';
 
-export function Landing({ message, error, onOpen }: { message: string; error: boolean; onOpen: () => void }) {
+interface LandingProps {
+  message: string;
+  error: boolean;
+  onOpen: () => void;
+  /** 在 MCP 客户端的对话里：数据由客户端送来，只显示提示，不显示选择文件 */
+  embedded?: boolean;
+}
+
+export function Landing({ message, error, onOpen, embedded = false }: LandingProps) {
   return (
     <div className="landing">
       <div className="landing-card">
         <div className="landing-logo">OneByOne</div>
         <p className="landing-sub">一步一步看懂 AI 的代码改动</p>
-        <div className="dropzone">
-          <p>
-            把 <code>walkthrough.json</code> 拖到这里
-          </p>
-          <button className="btn primary" type="button" onClick={onOpen}>
-            选择文件
-          </button>
-        </div>
+        {!embedded && (
+          <div className="dropzone">
+            <p>
+              把 <code>walkthrough.json</code> 拖到这里
+            </p>
+            <button className="btn primary" type="button" onClick={onOpen}>
+              选择文件
+            </button>
+          </div>
+        )}
         {message && <p className={`landing-msg${error ? ' error' : ''}`}>{message}</p>}
-        <p className="landing-hint">
-          用命令行 <code>onebyone open</code> 打开时，页面会自动带上讲解数据。
-        </p>
+        {!embedded && (
+          <p className="landing-hint">
+            用命令行 <code>onebyone open</code> 打开时，页面会自动带上讲解数据。
+          </p>
+        )}
       </div>
     </div>
   );
