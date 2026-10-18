@@ -1,0 +1,183 @@
+name: CD
+run-name: Release ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  # 和 ci.yml 保持一致；升级 Rust 时两处一起改
+  RUST_TOOLCHAIN: "1.99"
+
+jobs:
+  release:
+    name: Check release tag
+    # 仅新建发布 tag；更新或删除 tag 不发布，原创建事件允许 Re-run。
+    if: github.event.created && !github.event.deleted
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the tagged commit and main history
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify the tagged commit belongs to main
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          commit_sha=$(git rev-parse 'HEAD^{commit}')
+          if ! git merge-base --is-ancestor "$commit_sha" refs/remotes/origin/main; then
+            echo '发布 tag 必须指向已合入 main 的提交。' >&2
+            exit 1
+          fi
+          printf '发布 tag %s 对应 main 中的提交 %s。\n' "$RELEASE_TAG" "$commit_sha"
+
+      - name: Verify the tag matches the package versions
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version=${RELEASE_TAG#v}
+          server_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' server/Cargo.toml | head -n 1)
+          web_version=$(node -p "require('./web/package.json').version")
+          if [ "$server_version" != "$version" ] || [ "$web_version" != "$version" ]; then
+            printf '发布 tag %s 和版本号不一致：server/Cargo.toml 是 %s，web/package.json 是 %s。\n' \
+              "$RELEASE_TAG" "$server_version" "$web_version" >&2
+            exit 1
+          fi
+          printf '版本号一致：%s。\n' "$version"
+
+  ci:
+    name: Release CI
+    needs: release
+    uses: ./.github/workflows/ci.yml
+
+  draft:
+    name: Create draft release
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      # 先建草稿：所有平台的程序都上传成功后才正式发布，中途失败也不会公开一个缺文件的版本
+      - name: Create a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            printf 'Release %s 已存在，沿用它（重新运行时会出现这种情况）。\n' "$RELEASE_TAG"
+          else
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --draft --verify-tag --title "OneByOne $RELEASE_TAG" --generate-notes
+          fi
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: windows-x64
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+            asset: macos-arm64
+          - name: macOS Intel
+            os: macos-latest
+            target: x86_64-apple-darwin
+            asset: macos-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout the verified release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js and pnpm
+        uses: jdx/mise-action@v4
+        with:
+          install_args: "node pnpm"
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target "${{ matrix.target }}"
+          rustup default "$RUST_TOOLCHAIN"
+
+      # 播放器页面会在编译时嵌进程序，所以先构建前端
+      - name: Build the player
+        run: |
+          pnpm -C web install --frozen-lockfile
+          pnpm -C web build
+
+      - name: Build onebyone
+        env:
+          # Windows 上静态链接 C 运行库，用户不用另装 Visual C++ 运行库
+          RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
+        run: cargo build --release --locked --target "${{ matrix.target }}" --manifest-path server/Cargo.toml
+
+      - name: Package and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          PACKAGE: onebyone-${{ github.ref_name }}-${{ matrix.asset }}
+        run: |
+          exe=onebyone
+          if [ "$RUNNER_OS" = Windows ]; then exe=onebyone.exe; fi
+          mkdir -p "dist/$PACKAGE"
+          cp "server/target/$TARGET/release/$exe" LICENSE-MIT LICENSE-APACHE "dist/$PACKAGE/"
+          node .github/scripts/third-party-notices.mjs "$TARGET" "dist/$PACKAGE/THIRD-PARTY-NOTICES.md"
+          cd dist
+          if [ "$RUNNER_OS" = Windows ]; then
+            archive="$PACKAGE.zip"
+            pwsh -NoProfile -Command "Compress-Archive -Path '$PACKAGE' -DestinationPath '$archive'"
+            sha256sum "$archive" > "$archive.sha256"
+          else
+            archive="$PACKAGE.tar.gz"
+            tar -czf "$archive" "$PACKAGE"
+            shasum -a 256 "$archive" > "$archive.sha256"
+          fi
+          gh release upload "$RELEASE_TAG" "$archive" "$archive.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          {
+            echo '### 已发布'
+            echo
+            printf -- '- Tag: `%s`\n' "$RELEASE_TAG"
+            printf -- '- Commit: `%s`\n' "$GITHUB_SHA"
+            echo '- 文件：'
+            gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+              | sed 's/^/  - /'
+          } >> "$GITHUB_STEP_SUMMARY"

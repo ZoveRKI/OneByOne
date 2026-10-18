@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - '**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # 和 cd.yml 保持一致；升级 Rust 时两处一起改
+  RUST_TOOLCHAIN: "1.99"
+
+jobs:
+  frontend:
+    name: Frontend
+    # 同一仓库分支上的 PR 已经由推送触发过，PR 事件只给 fork 来的跑，避免重复
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout Frontend code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js and pnpm
+        uses: jdx/mise-action@v4
+        with:
+          install_args: "node pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend Lint
+        run: pnpm run lint
+
+      - name: Frontend Format
+        run: pnpm run fmt:check
+
+      - name: Frontend Build
+        run: |
+          pnpm run typecheck
+          pnpm run build
+
+      - name: Frontend Tests
+        run: pnpm run test
+
+  backend:
+    name: Backend (${{ matrix.name }})
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: server
+    steps:
+      - name: Checkout Backend code
+        uses: actions/checkout@v7
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+
+      - name: Cache Rust dependencies and build outputs
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            server/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('server/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_TOOLCHAIN }}-
+
+      # 这里不构建前端：没有 web/dist 时会嵌入占位页面，后端的检查和测试不受影响
+      - name: Backend Lint
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Backend Format
+        run: cargo fmt --check
+
+      - name: Backend Build
+        run: cargo build --all-targets --locked
+
+      - name: Backend Tests
+        run: cargo test --locked
