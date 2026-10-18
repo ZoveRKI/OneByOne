@@ -4,7 +4,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -54,10 +54,6 @@ pub fn write_json<T: Serialize>(file: &Path, data: &T) -> Result<(), String> {
 
 pub fn write_text(file: &Path, text: &str) -> Result<(), String> {
     fs::write(file, text).map_err(|e| format!("写入 {} 失败：{e}", to_posix(file)))
-}
-
-pub fn home_dir() -> Result<PathBuf, String> {
-    std::env::home_dir().ok_or_else(|| "找不到用户主目录".to_string())
 }
 
 /// 当前时间，格式和 JavaScript 的 `toISOString()` 一样，例如 `2026-10-18T09:30:00.000Z`

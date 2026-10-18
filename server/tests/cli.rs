@@ -143,19 +143,12 @@ fn open_any_walkthrough_file() {
 }
 
 #[test]
-fn install_skill_into_a_project() {
-    let repo = TempRepo::empty();
-    let r = run(&repo.dir, &["install-skill", "--project", "."]);
-    assert_eq!(r.status.code(), Some(0), "{}", stderr(&r));
-    let skill = fs::read_to_string(repo.path(".claude/skills/walkthrough/SKILL.md")).unwrap();
-    assert!(!skill.contains("{{ONEBYONE}}"));
-    assert!(skill.contains("onebyone"));
-    assert!(stdout(&run(&repo.dir, &["install-skill", "--project", "."])).starts_with("已更新"));
-}
-
-#[test]
 fn usage_errors_show_help() {
     let repo = TempRepo::empty();
+    // 已经移除的 install-skill 现在按未知命令处理
+    let r = run(&repo.dir, &["install-skill"]);
+    assert_eq!(r.status.code(), Some(1));
+    assert!(stderr(&r).contains("未知命令：install-skill"));
     let r = run(&repo.dir, &["nope"]);
     assert_eq!(r.status.code(), Some(1));
     assert!(stderr(&r).contains("未知命令：nope") && stderr(&r).contains("用法："));

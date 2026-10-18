@@ -1,4 +1,4 @@
-//! 命令行入口：hunks / build / open / install-skill / mcp。
+//! 命令行入口：hunks / build / open / mcp。
 //!
 //! 退出码：0 成功；1 出错（不是 git 仓库、JSON 写错等）；2 已生成，但还有没讲到的改动块或数据问题。
 
@@ -6,7 +6,7 @@ use crate::{
     diff::{self, CollectOptions, Diff, OUT_DIR},
     listing::{self, Target},
     mcp, model, page,
-    util::{display, home_dir, read_json, to_posix, write_text},
+    util::{display, read_json, to_posix, write_text},
     workflow::{self, HUNKS_FILE, LISTING_FILE, PAGE_FILE, STEPS_FILE},
 };
 use std::{
@@ -22,14 +22,10 @@ const HELP: &str = "用法：
       读取 .onebyone/steps.json，检查覆盖率，生成 walkthrough.json 和播放页面 walkthrough.html
   onebyone open [<walkthrough.json>]
       用浏览器打开 build 生成的播放页面；指定 JSON 文件时先用它生成页面
-  onebyone install-skill [--project <项目目录>]
-      安装 Claude Code 的 /walkthrough skill（默认装到 ~/.claude/skills）
   onebyone mcp
       作为 MCP 服务运行（通过标准输入输出通信），供 Codex、Claude 等客户端调用
 
 退出码：0 成功；1 出错；2 已生成，但还有未讲解的改动块或数据问题";
-
-const SKILL: &str = include_str!("../assets/SKILL.md");
 
 enum CliError {
     /// 用法写错，同时显示帮助
@@ -49,7 +45,6 @@ type CliResult = Result<i32, CliError>;
 struct Options {
     base: Option<String>,
     head: Option<String>,
-    project: Option<String>,
     paths: Vec<String>,
     positional: Vec<String>,
 }
@@ -72,9 +67,6 @@ pub fn run(args: &[String]) -> i32 {
         "hunks" => parse_options(rest, &["base", "head"], true, 0).and_then(|o| cmd_hunks(&o)),
         "build" => parse_options(rest, &[], false, 0).and_then(|_| cmd_build()),
         "open" => parse_options(rest, &[], false, 1).and_then(|o| cmd_open(&o)),
-        "install-skill" => {
-            parse_options(rest, &["project"], false, 0).and_then(|o| cmd_install_skill(&o))
-        }
         "mcp" => parse_options(rest, &[], false, 0).and_then(|_| cmd_mcp()),
         other => Err(CliError::Usage(format!("未知命令：{other}"))),
     };
@@ -112,10 +104,10 @@ fn parse_options(
                     .filter(|v| !v.is_empty() && !v.starts_with("--"))
                     .ok_or_else(|| CliError::Usage(format!("{arg} 后面需要一个值")))?
                     .clone();
-                match key {
-                    "base" => opts.base = Some(value),
-                    "head" => opts.head = Some(value),
-                    _ => opts.project = Some(value),
+                if key == "base" {
+                    opts.base = Some(value);
+                } else {
+                    opts.head = Some(value);
                 }
                 i += 2;
             }
@@ -281,29 +273,6 @@ fn temp_page_path(json_path: &Path) -> Result<PathBuf, String> {
     sha.update(to_posix(json_path).as_bytes());
     let tag = sha.digest().to_string();
     Ok(dir.join(format!("{stem}-{}.html", &tag[..8])))
-}
-
-// ---------- install-skill ----------
-
-fn cmd_install_skill(opts: &Options) -> CliResult {
-    let cwd = current_dir()?;
-    let skills_dir = match &opts.project {
-        Some(project) => cwd.join(project).join(".claude").join("skills"),
-        None => home_dir()?.join(".claude").join("skills"),
-    };
-    let target = skills_dir.join("walkthrough").join("SKILL.md");
-    let existed = target.exists();
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建 {} 失败：{e}", to_posix(parent)))?;
-    }
-    write_text(&target, &SKILL.replace("{{ONEBYONE}}", &cli_command()))?;
-    println!(
-        "{}：{}",
-        if existed { "已更新" } else { "已安装" },
-        target.display()
-    );
-    println!("在 Claude Code 里输入 /walkthrough 即可使用，也可以直接说\"讲解一下这次的改动\"。");
-    Ok(0)
 }
 
 // ---------- mcp：作为 MCP 服务运行 ----------
