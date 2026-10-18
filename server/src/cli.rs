@@ -1,12 +1,11 @@
-//! 命令行入口：hunks / build / open / install-skill。
+//! 命令行入口：hunks / build / open / install-skill / mcp。
 //!
 //! 退出码：0 成功；1 出错（不是 git 仓库、JSON 写错等）；2 已生成，但还有没讲到的改动块或数据问题。
 
 use crate::{
     diff::{self, CollectOptions, Diff, OUT_DIR},
-    listing,
-    model::{self, Report},
-    page,
+    listing::{self, Target},
+    mcp, model, page,
     util::{display, home_dir, read_json, to_posix, write_text},
     workflow::{self, HUNKS_FILE, LISTING_FILE, PAGE_FILE, STEPS_FILE},
 };
@@ -25,6 +24,8 @@ const HELP: &str = "用法：
       用浏览器打开 build 生成的播放页面；指定 JSON 文件时先用它生成页面
   onebyone install-skill [--project <项目目录>]
       安装 Claude Code 的 /walkthrough skill（默认装到 ~/.claude/skills）
+  onebyone mcp
+      作为 MCP 服务运行（通过标准输入输出通信），供 Codex、Claude 等客户端调用
 
 退出码：0 成功；1 出错；2 已生成，但还有未讲解的改动块或数据问题";
 
@@ -74,6 +75,7 @@ pub fn run(args: &[String]) -> i32 {
         "install-skill" => {
             parse_options(rest, &["project"], false, 0).and_then(|o| cmd_install_skill(&o))
         }
+        "mcp" => parse_options(rest, &[], false, 0).and_then(|_| cmd_mcp()),
         other => Err(CliError::Usage(format!("未知命令：{other}"))),
     };
     match result {
@@ -145,7 +147,10 @@ fn cmd_hunks(opts: &Options) -> CliResult {
     let cli = cli_command();
     let out_dir = diff.root.join(OUT_DIR);
     let listing_path = out_dir.join(LISTING_FILE);
-    write_text(&listing_path, &listing::render(&diff, &range, &cli))?;
+    write_text(
+        &listing_path,
+        &listing::render(&diff, &range, &Target::Cli(&cli)),
+    )?;
 
     let (adds, dels) = listing::count_lines(&diff.hunks);
     println!(
@@ -218,42 +223,14 @@ fn cmd_build() -> CliResult {
     let saved = read_json(&hunks_file, &cwd)?;
     let steps = read_json(&steps_file, &cwd)?;
     let built = workflow::build(&root, &saved, &steps, "steps.json")?;
-    print_report(&built.report, built.drift, &cli);
+    for line in built.report_lines(&Target::Cli(&cli)) {
+        println!("{line}");
+    }
     println!();
     println!("已生成：{}", display(&built.json_path, &cwd));
     println!("播放页面：{}", display(&built.page_path, &cwd));
     println!("在浏览器里打开：{cli} open");
     Ok(if built.is_clean() { 0 } else { 2 })
-}
-
-fn print_report(report: &Report, drift: Option<(usize, usize)>, cli: &str) {
-    let covered = report.total - report.uncovered.len();
-    println!("讲解步骤：{} 个", report.step_count);
-    if report.uncovered.is_empty() {
-        println!("讲解覆盖：{covered}/{}，讲解覆盖了全部改动块", report.total);
-    } else {
-        println!(
-            "讲解覆盖：{covered}/{}，还有 {} 个改动块没有讲到：",
-            report.total,
-            report.uncovered.len()
-        );
-        for h in &report.uncovered {
-            let label = listing::hunk_label(h.old_start, h.old_count, h.new_start, h.new_count);
-            println!("  {}  {}  {label}  +{} −{}", h.id, h.file, h.adds, h.dels);
-        }
-    }
-    if !report.issues.is_empty() {
-        println!("数据问题 {} 条：", report.issues.len());
-        for msg in &report.issues {
-            println!("  - {msg}");
-        }
-    }
-    if let Some((added, removed)) = drift {
-        println!(
-            "注意：运行 hunks 之后改动又有变化（新出现 {added} 个、消失 {removed} 个改动块）。"
-        );
-        println!("请重新运行 {cli} hunks，按新的清单更新 steps.json。");
-    }
 }
 
 // ---------- open：在浏览器里打开播放页面 ----------
@@ -326,6 +303,13 @@ fn cmd_install_skill(opts: &Options) -> CliResult {
         target.display()
     );
     println!("在 Claude Code 里输入 /walkthrough 即可使用，也可以直接说\"讲解一下这次的改动\"。");
+    Ok(0)
+}
+
+// ---------- mcp：作为 MCP 服务运行 ----------
+
+fn cmd_mcp() -> CliResult {
+    mcp::run()?;
     Ok(0)
 }
 

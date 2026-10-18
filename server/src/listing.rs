@@ -4,7 +4,27 @@ use crate::diff::{Diff, Hunk};
 
 // 清单里每个改动块最多列出的行数；更长的只列开头，完整内容在播放器里看
 const LISTING_MAX_LINES: usize = 120;
-const GUIDE: &str = include_str!("../assets/guide.md");
+// 写法要求分成两种用法各自的部分（步骤交到哪里、交完怎么检查）和共用的字段说明、编排要求
+const GUIDE_CLI: &str = include_str!("../assets/guide.md");
+const GUIDE_MCP: &str = include_str!("../assets/guide-mcp.md");
+const GUIDE_STEPS: &str = include_str!("../assets/guide-steps.md");
+
+/// 清单给哪种用法读，决定提示和写法要求的措辞
+pub enum Target<'a> {
+    /// 命令行：AI 写 steps.json，再用这个命令 build
+    Cli(&'a str),
+    /// MCP 工具：AI 把步骤作为参数调用 show_walkthrough
+    Mcp,
+}
+
+/// 附在清单末尾的写法要求
+pub fn guide(target: &Target) -> String {
+    let guide = match target {
+        Target::Cli(cli) => GUIDE_CLI.replace("{{ONEBYONE}}", cli),
+        Target::Mcp => GUIDE_MCP.to_string(),
+    };
+    guide.replace("{{STEPS}}", GUIDE_STEPS.trim_end())
+}
 
 pub fn status_label(status: &str) -> &'static str {
     match status {
@@ -56,24 +76,21 @@ pub fn hunk_label(old_start: u64, old_count: u64, new_start: u64, new_count: u64
     }
 }
 
-pub fn render(diff: &Diff, range: &str, cli: &str) -> String {
-    let (adds, dels) = count_lines(&diff.hunks);
-    let mut out = vec![
-        "# OneByOne 改动清单".to_string(),
-        String::new(),
-        format!("- 对比范围：{range}"),
-        format!(
-            "- {} 个文件，{} 个改动块，+{adds} −{dels}",
-            diff.files.len(),
-            diff.hunks.len()
-        ),
-        String::new(),
-        "请按文末的「写法要求」，把下面的改动块编排成讲解步骤，写入 `.onebyone/steps.json`。"
-            .to_string(),
-        String::new(),
-    ];
+/// 完整的改动清单：每个改动块的编号和代码，文末附上写法要求
+pub fn render(diff: &Diff, range: &str, target: &Target) -> String {
+    let mut out = header(diff, range);
+    out.push(match target {
+        Target::Cli(_) => {
+            "请按文末的「写法要求」，把下面的改动块编排成讲解步骤，写入 `.onebyone/steps.json`。"
+        }
+        Target::Mcp => {
+            "请按文末的「写法要求」，把下面的改动块编排成讲解步骤，然后调用 `show_walkthrough`。"
+        }
+    }
+    .to_string());
+    out.push(String::new());
     for f in &diff.files {
-        let list: Vec<&Hunk> = diff.hunks.iter().filter(|h| h.file == f.path).collect();
+        let list = hunks_of(diff, &f.path);
         let (a, d) = count_lines(list.iter().copied());
         out.push(format!(
             "## {}（{}，+{a} −{d}）",
@@ -113,8 +130,51 @@ pub fn render(diff: &Diff, range: &str, cli: &str) -> String {
             }
         }
     }
-    out.push(GUIDE.replace("{{ONEBYONE}}", cli));
+    out.push(guide(target));
     out.join("\n")
+}
+
+/// 清单太长、不适合直接放进工具结果时的概要：只列文件，代码让 AI 到 `listing_path` 分段读
+pub fn render_overview(diff: &Diff, range: &str, listing_path: &str) -> String {
+    let mut out = header(diff, range);
+    out.push(format!(
+        "改动较多，完整的清单（每个改动块的编号和代码）已写入 `{listing_path}`。请分段读完这个文件，再按下面的「写法要求」编排步骤，然后调用 `show_walkthrough`。"
+    ));
+    out.push(String::new());
+    out.push("涉及的文件：".to_string());
+    out.push(String::new());
+    for f in &diff.files {
+        let list = hunks_of(diff, &f.path);
+        let (a, d) = count_lines(list.iter().copied());
+        out.push(format!(
+            "- {}（{}，{} 个改动块，+{a} −{d}）",
+            f.path,
+            status_label(&f.status),
+            list.len()
+        ));
+    }
+    out.push(String::new());
+    out.push(guide(&Target::Mcp));
+    out.join("\n")
+}
+
+fn header(diff: &Diff, range: &str) -> Vec<String> {
+    let (adds, dels) = count_lines(&diff.hunks);
+    vec![
+        "# OneByOne 改动清单".to_string(),
+        String::new(),
+        format!("- 对比范围：{range}"),
+        format!(
+            "- {} 个文件，{} 个改动块，+{adds} −{dels}",
+            diff.files.len(),
+            diff.hunks.len()
+        ),
+        String::new(),
+    ]
+}
+
+fn hunks_of<'a>(diff: &'a Diff, path: &str) -> Vec<&'a Hunk> {
+    diff.hunks.iter().filter(|h| h.file == path).collect()
 }
 
 // 代码里本身带有 ``` 时，外层用更长的反引号包起来，避免提前结束代码块
@@ -148,5 +208,16 @@ mod tests {
         assert_eq!(raw_counts(&lines), (2, 2));
         assert_eq!(hunk_label(1, 2, 1, 2), "@@ -1,2 +1,2 @@");
         assert_eq!(hunk_label(0, 0, 0, 0), "文件级变化");
+    }
+
+    #[test]
+    fn both_guides_share_the_step_rules() {
+        for target in [Target::Cli("onebyone"), Target::Mcp] {
+            let text = guide(&target);
+            assert!(!text.contains("{{"), "占位符应该都被替换了：{text}");
+            assert!(text.contains("| `hunks` |") && text.contains("1. **覆盖全部改动块**"));
+        }
+        assert!(guide(&Target::Cli("onebyone")).contains("onebyone build"));
+        assert!(guide(&Target::Mcp).contains("调用 `show_walkthrough` 提交"));
     }
 }

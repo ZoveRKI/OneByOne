@@ -16,6 +16,11 @@ pub fn render(data: &Value) -> Result<String, String> {
     render_with(PLAYER, data)
 }
 
+/// 不带数据的播放器页面：MCP 客户端在对话里显示它，讲解数据随工具结果送进页面
+pub fn player() -> &'static str {
+    PLAYER
+}
+
 fn render_with(player: &str, data: &Value) -> Result<String, String> {
     let missing = || "播放器页面里找不到数据标签，请重新构建前端（pnpm -C web build）".to_string();
     let start = player.find(DATA_TAG).ok_or_else(missing)? + DATA_TAG.len();

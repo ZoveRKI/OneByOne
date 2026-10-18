@@ -61,8 +61,9 @@ fn hunks_then_steps_then_build() {
     for id in &ids {
         assert!(listing.contains(&format!("### {id}")), "清单里应该有 {id}");
     }
-    assert!(listing.contains("## 写法要求"));
-    assert!(!listing.contains("{{ONEBYONE}}"));
+    assert!(listing.contains("## 写法要求") && listing.contains("1. **覆盖全部改动块**"));
+    assert!(listing.contains("build"));
+    assert!(!listing.contains("{{"), "占位符应该都被替换了");
 
     // 只讲了一个改动块，还引用了一个不存在的 id
     write_steps(json!([{ "title": "只讲一个", "hunks": [ids[0], "hdeadbe"] }]));

@@ -3,6 +3,7 @@
 
 use crate::{
     diff::{self, CollectOptions, Diff, Hunk, OUT_DIR},
+    listing::{self, Target},
     model::{self, Report},
     page,
     util::{iso_now, to_posix, truthy, write_json, write_text},
@@ -58,6 +59,54 @@ impl Built {
     /// 讲解覆盖了全部改动块，没有数据问题，代码也没有再变化
     pub fn is_clean(&self) -> bool {
         self.report.uncovered.is_empty() && self.report.issues.is_empty() && self.drift.is_none()
+    }
+
+    /// 检查结果的说明：步骤数、覆盖率、没讲到的改动块、数据问题，以及收集改动之后代码是否又变了
+    pub fn report_lines(&self, target: &Target) -> Vec<String> {
+        let report = &self.report;
+        let covered = report.total - report.uncovered.len();
+        let mut lines = vec![format!("讲解步骤：{} 个", report.step_count)];
+        if report.uncovered.is_empty() {
+            lines.push(format!(
+                "讲解覆盖：{covered}/{}，讲解覆盖了全部改动块",
+                report.total
+            ));
+        } else {
+            lines.push(format!(
+                "讲解覆盖：{covered}/{}，还有 {} 个改动块没有讲到：",
+                report.total,
+                report.uncovered.len()
+            ));
+            for h in &report.uncovered {
+                let label = listing::hunk_label(h.old_start, h.old_count, h.new_start, h.new_count);
+                lines.push(format!(
+                    "  {}  {}  {label}  +{} −{}",
+                    h.id, h.file, h.adds, h.dels
+                ));
+            }
+        }
+        if !report.issues.is_empty() {
+            lines.push(format!("数据问题 {} 条：", report.issues.len()));
+            lines.extend(report.issues.iter().map(|msg| format!("  - {msg}")));
+        }
+        if let Some((added, removed)) = self.drift {
+            let (collected, rerun) = match target {
+                Target::Cli(cli) => (
+                    "运行 hunks",
+                    format!("请重新运行 {cli} hunks，按新的清单更新 steps.json。"),
+                ),
+                Target::Mcp => (
+                    "调用 get_changes",
+                    "请重新调用 get_changes，按新的清单更新步骤后再调用 show_walkthrough。"
+                        .to_string(),
+                ),
+            };
+            lines.push(format!(
+                "注意：{collected} 之后改动又有变化（新出现 {added} 个、消失 {removed} 个改动块）。"
+            ));
+            lines.push(rerun);
+        }
+        lines
     }
 }
 

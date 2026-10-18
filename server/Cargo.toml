@@ -2,11 +2,13 @@
 name = "onebyone"
 version = "0.3.0"
 edition = "2024"
-description = "OneByOne 命令行：把 git 改动切成改动块，检查 AI 写的讲解步骤，生成可以逐步播放的讲解页面"
+description = "OneByOne 命令行和 MCP 服务：把 git 改动切成改动块，检查 AI 写的讲解步骤，生成可以逐步播放的讲解"
 license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
+rmcp = { version = "3.5.1", features = ["server", "macros", "transport-io", "schemars"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 sha1_smol = "1.0.1"
+tokio = { version = "1.53.3", features = ["rt"] }
