@@ -95,6 +95,29 @@ describe('App 在 MCP 客户端的对话里', () => {
     expect(toggleFullscreen).toHaveBeenCalled();
   });
 
+  it('内嵌显示时用紧凑布局：没有文件树，覆盖情况显示在工具栏上', async () => {
+    const { bridge, send } = fakeBridge({ displayMode: 'inline', canFullscreen: true });
+    render(<App load={loadOf({ kind: 'host' })} bridge={bridge} />);
+    await screen.findByText('正在等待讲解数据……');
+    send({ kind: 'data', text: JSON.stringify(data), name: '讲解数据', restore: false });
+
+    expect(screen.queryByRole('complementary', { name: '改动文件' })).toBeNull();
+    // 示例数据里 src/b.ts 的改动没有讲到，点工具栏上的提示跳到「未讲解的改动」
+    fireEvent.click(screen.getByRole('button', { name: '1 处未讲解' }));
+    expect(title('未讲解的改动')).toBeTruthy();
+  });
+
+  it('全屏时恢复完整布局', async () => {
+    const { bridge, send } = fakeBridge({ displayMode: 'fullscreen', canFullscreen: true });
+    render(<App load={loadOf({ kind: 'host' })} bridge={bridge} />);
+    await screen.findByText('正在等待讲解数据……');
+    send({ kind: 'data', text: JSON.stringify(data), name: '讲解数据', restore: false });
+
+    expect(screen.getByRole('complementary', { name: '改动文件' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '1 处未讲解' })).toBeNull();
+    expect(screen.getByRole('button', { name: '退出全屏' })).toBeTruthy();
+  });
+
   it('工具出错时显示返回的说明', async () => {
     const { bridge, send } = fakeBridge({ displayMode: 'inline', canFullscreen: false });
     render(<App load={loadOf({ kind: 'host' })} bridge={bridge} />);

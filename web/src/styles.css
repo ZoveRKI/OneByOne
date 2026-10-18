@@ -1078,6 +1078,58 @@ html.embedded .landing {
   padding: 32px 24px;
 }
 
+/* 紧凑布局（在对话里内嵌显示，全屏时不用）：不显示文件树，工具栏只占一行，其余高度都给步骤内容。
+   选择器带上 .app.compact，优先级高于下面响应式规则里的单个类名 */
+.app.compact .topbar {
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 6px 10px;
+}
+.app.compact .scrubber {
+  order: 0;
+  flex: 1 1 auto;
+  min-width: 80px;
+}
+.app.compact .main {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.app.compact .step-head {
+  padding: 10px 14px 8px;
+}
+.app.compact .step-title {
+  font-size: 17px;
+}
+/* 工具栏上的覆盖情况：讲全了只显示对勾，否则显示未讲解的数量 */
+.cov-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.cov-badge svg {
+  width: 16px;
+  height: 16px;
+}
+.cov-badge.ok {
+  padding: 0 2px;
+  color: var(--ok-text);
+}
+.cov-badge.warn {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+button.cov-badge {
+  cursor: pointer;
+}
+
 /* ---------- 响应式 ---------- */
 
 @media (max-width: 1100px) {
@@ -1146,6 +1198,14 @@ html.embedded .landing {
   .explain {
     padding-left: 14px;
     padding-right: 14px;
+  }
+}
+
+/* 紧凑布局下更窄时，收起播放速度和快捷键按钮，保证工具栏一行放得下 */
+@media (max-width: 520px) {
+  .app.compact .speed,
+  .app.compact .help-btn {
+    display: none;
   }
 }
 

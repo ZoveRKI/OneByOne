@@ -3,6 +3,7 @@ import type { Model, Track } from '../core/model';
 import { THEME_LABEL, type ThemePref } from '../hooks/useTheme';
 import { SPEEDS, type Action, type PlayerState } from '../state/player';
 import {
+  CheckIcon,
   ExitFullscreenIcon,
   FullscreenIcon,
   HelpIcon,
@@ -12,6 +13,7 @@ import {
   PlayIcon,
   PrevIcon,
   ThemeIcon,
+  WarnIcon,
 } from './icons';
 import { Scrubber } from './Scrubber';
 
@@ -27,6 +29,8 @@ interface Props {
   onHelp: () => void;
   /** MCP 客户端支持全屏时才提供 */
   fullscreen?: { active: boolean; onToggle: () => void };
+  /** 紧凑布局（在对话里内嵌显示）：没有侧栏，覆盖情况改为显示在这里 */
+  compact?: boolean;
 }
 
 const MODES = [
@@ -44,13 +48,14 @@ export function TopBar({
   onOpenFile,
   onHelp,
   fullscreen,
+  compact = false,
 }: Props) {
   const total = track.items.length;
   const playLabel = state.playing ? '暂停' : '播放';
   const themeLabel = THEME_LABEL[themePref];
   return (
     <header className="topbar">
-      <div className="brand">OneByOne</div>
+      {!compact && <div className="brand">OneByOne</div>}
       <div className="transport">
         <button
           className="icon-btn"
@@ -86,8 +91,9 @@ export function TopBar({
       <div className="counter">
         {state.index + 1} / {total}
       </div>
+      {compact && <CoverageBadge model={model} onGotoUncovered={() => dispatch({ type: 'gotoUncovered' })} />}
       <button
-        className="text-btn"
+        className="text-btn speed"
         type="button"
         title="自动播放速度"
         onClick={() => dispatch({ type: 'cycleSpeed' })}
@@ -141,10 +147,50 @@ export function TopBar({
         >
           <ThemeIcon pref={themePref} />
         </button>
-        <button className="icon-btn" type="button" title="快捷键（?）" aria-label="快捷键" onClick={onHelp}>
+        <button
+          className="icon-btn help-btn"
+          type="button"
+          title="快捷键（?）"
+          aria-label="快捷键"
+          onClick={onHelp}
+        >
           <HelpIcon />
         </button>
       </div>
     </header>
+  );
+}
+
+/** 紧凑布局里的覆盖情况：讲全了只显示对勾；有没讲到的改动时显示数量，点击跳到「未讲解的改动」 */
+function CoverageBadge({ model, onGotoUncovered }: { model: Model; onGotoUncovered: () => void }) {
+  const { coverage, issues } = model;
+  const issueNote = issues.length ? `\n另有 ${issues.length} 条数据问题，全屏后在左下角查看` : '';
+  if (coverage.uncovered.length) {
+    return (
+      <button
+        className="cov-badge warn"
+        type="button"
+        title={`${coverage.uncovered.length} 处改动未讲解（共 ${coverage.total} 处），点击查看${issueNote}`}
+        onClick={onGotoUncovered}
+      >
+        <WarnIcon />
+        <span>{coverage.uncovered.length} 处未讲解</span>
+      </button>
+    );
+  }
+  if (issues.length) {
+    return (
+      <span className="cov-badge warn" title={issues.join('\n')}>
+        <WarnIcon />
+        <span>{issues.length} 条数据问题</span>
+      </span>
+    );
+  }
+  if (!coverage.total) return null;
+  const label = `讲解覆盖了全部 ${coverage.total} 处改动`;
+  return (
+    <span className="cov-badge ok" role="img" title={label} aria-label={label}>
+      <CheckIcon />
+    </span>
   );
 }

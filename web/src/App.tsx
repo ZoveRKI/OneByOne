@@ -215,11 +215,13 @@ export function App({ load = loadInitial, bridge = null }: Props) {
   const track = model ? trackOf(model, state.mode) : null;
   const step = track?.items[state.index];
   const goTo = (index: number) => dispatch({ type: 'go', index });
+  // 在对话里内嵌显示（不是全屏）时用紧凑布局：不显示文件树，工具栏只占一行，其余高度都给步骤内容
+  const compact = host !== null && host.displayMode !== 'fullscreen';
 
   return (
     <>
       {model && track && step ? (
-        <div className="app">
+        <div className={compact ? 'app compact' : 'app'}>
           <TopBar
             state={state}
             model={model}
@@ -234,18 +236,21 @@ export function App({ load = loadInitial, bridge = null }: Props) {
                 ? { active: host.displayMode === 'fullscreen', onToggle: bridge.toggleFullscreen }
                 : undefined
             }
+            compact={compact}
           />
           <main className="main">
-            <Sidebar
-              model={model}
-              track={track}
-              index={state.index}
-              collapsed={state.collapsed}
-              onGo={goTo}
-              onOpenFile={openFile}
-              onToggleDir={(path) => dispatch({ type: 'toggleDir', path })}
-              onGotoUncovered={() => dispatch({ type: 'gotoUncovered' })}
-            />
+            {!compact && (
+              <Sidebar
+                model={model}
+                track={track}
+                index={state.index}
+                collapsed={state.collapsed}
+                onGo={goTo}
+                onOpenFile={openFile}
+                onToggleDir={(path) => dispatch({ type: 'toggleDir', path })}
+                onGotoUncovered={() => dispatch({ type: 'gotoUncovered' })}
+              />
+            )}
             <section ref={stage} className="stage">
               <div className="step-head">
                 <StepHead key={stepKey} step={step} index={state.index} onJump={scrollToFile} />
