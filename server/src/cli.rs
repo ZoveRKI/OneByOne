@@ -3,15 +3,14 @@
 //! 退出码：0 成功；1 出错（不是 git 仓库、JSON 写错等）；2 已生成，但还有没讲到的改动块或数据问题。
 
 use crate::{
-    diff::{self, CollectOptions, Diff, Hunk, OUT_DIR},
+    diff::{self, CollectOptions, Diff, OUT_DIR},
     listing,
     model::{self, Report},
     page,
-    util::{display, home_dir, iso_now, read_json, to_posix, truthy, write_json, write_text},
+    util::{display, home_dir, read_json, to_posix, write_text},
+    workflow::{self, HUNKS_FILE, LISTING_FILE, PAGE_FILE, STEPS_FILE},
 };
-use serde_json::{Map, Value, json};
 use std::{
-    collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
 };
@@ -132,32 +131,20 @@ fn parse_options(
 
 fn cmd_hunks(opts: &Options) -> CliResult {
     let cwd = current_dir()?;
-    let diff = diff::collect_diff(&CollectOptions {
+    let diff = workflow::collect(&CollectOptions {
         cwd: &cwd,
         base: opts.base.as_deref().unwrap_or("HEAD"),
         head: opts.head.as_deref(),
         paths: &opts.paths,
     })?;
-    let range = range_label(&diff);
+    let range = workflow::range_label(&diff);
     if diff.hunks.is_empty() {
         println!("没有发现改动（{range}）。");
         return Ok(0);
     }
     let cli = cli_command();
-    let out_dir = ensure_out_dir(&diff.root)?;
-    write_json(
-        &out_dir.join("hunks.json"),
-        &json!({
-            "version": 1,
-            "generatedAt": iso_now(),
-            "base": diff.base,
-            "head": diff.head,
-            "paths": diff.paths,
-            "files": diff.files,
-            "hunks": diff.hunks,
-        }),
-    )?;
-    let listing_path = out_dir.join("hunks.md");
+    let out_dir = diff.root.join(OUT_DIR);
+    let listing_path = out_dir.join(LISTING_FILE);
     write_text(&listing_path, &listing::render(&diff, &range, &cli))?;
 
     let (adds, dels) = listing::count_lines(&diff.hunks);
@@ -169,7 +156,7 @@ fn cmd_hunks(opts: &Options) -> CliResult {
     println!("对比范围：{range}");
     println!("改动清单：{}", display(&listing_path, &cwd));
     // 之前写过步骤时，顺便说明哪些引用失效、哪些还没讲，方便在原来的基础上修改
-    let steps_file = out_dir.join("steps.json");
+    let steps_file = out_dir.join(STEPS_FILE);
     if steps_file.exists() {
         println!(
             "已有 steps.json：{}",
@@ -184,7 +171,7 @@ fn cmd_hunks(opts: &Options) -> CliResult {
 
 fn check_existing_steps(steps_file: &Path, diff: &Diff, cwd: &Path) -> String {
     let report = read_json(steps_file, cwd)
-        .and_then(|steps| assemble(&steps, diff))
+        .and_then(|steps| workflow::assemble(&steps, diff))
         .and_then(|w| model::check(&w));
     match report {
         Ok(r) => {
@@ -209,8 +196,8 @@ fn cmd_build() -> CliResult {
     let root = diff::repo_root(&cwd)?;
     let cli = cli_command();
     let out_dir = root.join(OUT_DIR);
-    let hunks_file = out_dir.join("hunks.json");
-    let steps_file = out_dir.join("steps.json");
+    let hunks_file = out_dir.join(HUNKS_FILE);
+    let steps_file = out_dir.join(STEPS_FILE);
     if !hunks_file.exists() {
         return Err(format!(
             "找不到 {}，请先运行：{cli} hunks",
@@ -219,7 +206,7 @@ fn cmd_build() -> CliResult {
         .into());
     }
     if !steps_file.exists() {
-        let listing_path = out_dir.join("hunks.md");
+        let listing_path = out_dir.join(LISTING_FILE);
         return Err(format!(
             "找不到 {}，请先按 {} 末尾的要求写好步骤",
             display(&steps_file, &cwd),
@@ -229,88 +216,17 @@ fn cmd_build() -> CliResult {
     }
 
     let saved = read_json(&hunks_file, &cwd)?;
-    let paths: Vec<String> = saved
-        .get("paths")
-        .and_then(Value::as_array)
-        .map(|list| {
-            list.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    // 重新收集一次改动：播放器里显示的永远是当前真实的代码
-    let diff = diff::collect_diff(&CollectOptions {
-        cwd: &root,
-        base: saved
-            .pointer("/base/rev")
-            .and_then(Value::as_str)
-            .unwrap_or("HEAD"),
-        head: saved.pointer("/head/rev").and_then(Value::as_str),
-        paths: &paths,
-    })?;
-    let walkthrough = assemble(&read_json(&steps_file, &cwd)?, &diff)?;
-    let report = model::check(&walkthrough).map_err(|e| format!("steps.json 不符合格式：{e}"))?;
-    let output = out_dir.join("walkthrough.json");
-    write_json(&output, &walkthrough)?;
-    let page_path = out_dir.join("walkthrough.html");
-    write_text(&page_path, &page::render(&walkthrough)?)?;
-
-    let saved_ids: HashSet<&str> = saved
-        .get("hunks")
-        .and_then(Value::as_array)
-        .map(|list| {
-            list.iter()
-                .filter_map(|h| h.get("id").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
-    let ok = print_report(&report, compare_ids(&saved_ids, &diff.hunks), &cli);
+    let steps = read_json(&steps_file, &cwd)?;
+    let built = workflow::build(&root, &saved, &steps, "steps.json")?;
+    print_report(&built.report, built.drift, &cli);
     println!();
-    println!("已生成：{}", display(&output, &cwd));
-    println!("播放页面：{}", display(&page_path, &cwd));
+    println!("已生成：{}", display(&built.json_path, &cwd));
+    println!("播放页面：{}", display(&built.page_path, &cwd));
     println!("在浏览器里打开：{cli} open");
-    Ok(if ok { 0 } else { 2 })
+    Ok(if built.is_clean() { 0 } else { 2 })
 }
 
-// 步骤来自 AI，代码来自刚收集的 diff，两者合成播放器读取的 walkthrough.json
-fn assemble(steps: &Value, diff: &Diff) -> Result<Value, String> {
-    let Value::Object(s) = steps else {
-        return Err("steps.json 顶层必须是一个 JSON 对象".to_string());
-    };
-    let pick = |key: &str, fallback: &str| match s.get(key) {
-        Some(v) if truthy(Some(v)) => v.clone(),
-        _ => json!(fallback),
-    };
-    let base = match &diff.head {
-        Some(head) => format!("{}..{}", diff.base.commit, head.commit),
-        None => diff.base.commit.clone(),
-    };
-    let to_value = |v: serde_json::Result<Value>| v.map_err(|e| format!("生成 JSON 失败：{e}"));
-    let mut w = Map::new();
-    w.insert("version".into(), json!(1));
-    w.insert("title".into(), pick("title", "未命名的改动"));
-    w.insert("summary".into(), pick("summary", ""));
-    w.insert("base".into(), json!(base));
-    w.insert("generatedAt".into(), json!(iso_now()));
-    w.insert("files".into(), to_value(serde_json::to_value(&diff.files))?);
-    w.insert("hunks".into(), to_value(serde_json::to_value(&diff.hunks))?);
-    if let Some(list) = s.get("steps") {
-        w.insert("steps".into(), list.clone());
-    }
-    if let Some(timeline) = s.get("timeline").filter(|v| truthy(Some(v))) {
-        w.insert("timeline".into(), timeline.clone());
-    }
-    Ok(Value::Object(w))
-}
-
-fn compare_ids(saved: &HashSet<&str>, fresh: &[Hunk]) -> Option<(usize, usize)> {
-    let after: HashSet<&str> = fresh.iter().map(|h| h.id.as_str()).collect();
-    let added = after.difference(saved).count();
-    let removed = saved.difference(&after).count();
-    (added > 0 || removed > 0).then_some((added, removed))
-}
-
-fn print_report(report: &Report, drift: Option<(usize, usize)>, cli: &str) -> bool {
+fn print_report(report: &Report, drift: Option<(usize, usize)>, cli: &str) {
     let covered = report.total - report.uncovered.len();
     println!("讲解步骤：{} 个", report.step_count);
     if report.uncovered.is_empty() {
@@ -338,7 +254,6 @@ fn print_report(report: &Report, drift: Option<(usize, usize)>, cli: &str) -> bo
         );
         println!("请重新运行 {cli} hunks，按新的清单更新 steps.json。");
     }
-    report.uncovered.is_empty() && report.issues.is_empty() && drift.is_none()
 }
 
 // ---------- open：在浏览器里打开播放页面 ----------
@@ -348,7 +263,7 @@ fn cmd_open(opts: &Options) -> CliResult {
     let page_path = match opts.positional.first() {
         None => {
             let root = diff::repo_root(&cwd)?;
-            let page_path = root.join(OUT_DIR).join("walkthrough.html");
+            let page_path = root.join(OUT_DIR).join(PAGE_FILE);
             if !page_path.exists() {
                 return Err(format!(
                     "找不到 {}，请先运行：{} build",
@@ -431,30 +346,4 @@ fn cli_command() -> String {
     } else {
         exe
     }
-}
-
-// 目录里放一个只写 * 的 .gitignore：生成的文件不会出现在 git status 里，也不用改项目自己的 .gitignore
-fn ensure_out_dir(root: &Path) -> Result<PathBuf, String> {
-    let dir = root.join(OUT_DIR);
-    fs::create_dir_all(&dir).map_err(|e| format!("创建 {} 失败：{e}", to_posix(&dir)))?;
-    let ignore = dir.join(".gitignore");
-    if !ignore.exists() {
-        write_text(&ignore, "*\n")?;
-    }
-    Ok(dir)
-}
-
-fn range_label(diff: &Diff) -> String {
-    let target = diff
-        .head
-        .as_ref()
-        .map_or("工作区（含未提交和未跟踪的文件）", |h| {
-            h.label.as_str()
-        });
-    let scope = if diff.paths.is_empty() {
-        String::new()
-    } else {
-        format!("，只看 {}", diff.paths.join("、"))
-    };
-    format!("{} → {target}{scope}", diff.base.label)
 }
