@@ -1,0 +1,7 @@
+# 依赖和构建产物
+node_modules/
+web/dist/
+server/target/
+
+# OneByOne 生成的讲解目录（目录里也自带只写了 * 的 .gitignore）
+.onebyone/
