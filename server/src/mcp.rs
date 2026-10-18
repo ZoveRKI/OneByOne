@@ -100,7 +100,7 @@ struct OneByOne {
 #[tool_router]
 impl OneByOne {
     /// 切分项目里的代码改动，返回带编号的改动清单，末尾附有编排讲解步骤的写法要求。
-    /// 用户想看懂这次改了什么、要求讲解改动时先调用它，再按要求调用 show_walkthrough。
+    /// 只在用户要求讲解改动时调用，改完代码后不要主动调用；之后按要求调用 show_walkthrough。
     #[tool(
         title = "切分代码改动",
         annotations(
