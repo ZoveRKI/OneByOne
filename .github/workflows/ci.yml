@@ -6,7 +6,7 @@ on:
   pull_request:
   push:
     branches:
-      - '**'
+      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,8 +22,6 @@ env:
 jobs:
   frontend:
     name: Frontend
-    # 同一仓库分支上的 PR 已经由推送触发过，PR 事件只给 fork 来的跑，避免重复
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -57,7 +55,6 @@ jobs:
 
   backend:
     name: Backend (${{ matrix.name }})
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:
