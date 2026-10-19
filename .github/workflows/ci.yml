@@ -15,10 +15,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # 和 cd.yml 保持一致；升级 Rust 时两处一起改
-  RUST_TOOLCHAIN: "1.99"
-
 jobs:
   frontend:
     name: Frontend
@@ -73,10 +69,12 @@ jobs:
       - name: Checkout Backend code
         uses: actions/checkout@v7
 
+      # 不带参数时按仓库根目录的 rust-toolchain.toml 安装 Rust 和其中列出的组件
       - name: Set up Rust
+        id: rust
         run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
-          rustup default "$RUST_TOOLCHAIN"
+          rustup toolchain install
+          echo "version=$(rustc --version | cut -d ' ' -f 2)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Rust dependencies and build outputs
         uses: actions/cache@v6
@@ -86,9 +84,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             server/target/
-          key: ${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('server/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-${{ steps.rust.outputs.version }}-${{ hashFiles('server/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_TOOLCHAIN }}-
+            ${{ runner.os }}-${{ runner.arch }}-rust-${{ steps.rust.outputs.version }}-
 
       # 这里不构建前端：没有 web/dist 时会嵌入占位页面，后端的检查和测试不受影响
       - name: Backend Lint

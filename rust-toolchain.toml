@@ -1,0 +1,5 @@
+# 本机和 CI 共用的 Rust 版本：rustup 会让仓库里的 cargo 命令自动使用这里的工具链，升级 Rust 时只改这里
+[toolchain]
+channel = "1.99"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

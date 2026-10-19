@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  # 和 ci.yml 保持一致；升级 Rust 时两处一起改
-  RUST_TOOLCHAIN: "1.99"
-
 jobs:
   release:
     name: Check release tag
@@ -123,10 +119,11 @@ jobs:
         with:
           install_args: "node pnpm"
 
+      # 按 rust-toolchain.toml 安装 Rust，再加上这次交叉编译的目标平台
       - name: Set up Rust
         run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target "${{ matrix.target }}"
-          rustup default "$RUST_TOOLCHAIN"
+          rustup toolchain install
+          rustup target add "${{ matrix.target }}"
 
       # 播放器页面会在编译时嵌进程序，所以先构建前端
       - name: Build the player
