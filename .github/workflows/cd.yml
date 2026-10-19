@@ -91,18 +91,24 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
             asset: windows-x64
+            format: zip
           - name: macOS Apple Silicon
             os: macos-latest
             target: aarch64-apple-darwin
             asset: macos-arm64
+            format: dmg
           - name: macOS Intel
             os: macos-latest
             target: x86_64-apple-darwin
             asset: macos-x64
+            format: dmg
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
       contents: write
+    env:
+      # 包名同时用作 zip 里的顶层目录和 dmg 的卷名，加上扩展名就是上传的文件名
+      PACKAGE: onebyone-${{ github.ref_name }}-${{ matrix.asset }}
     defaults:
       run:
         shell: bash
@@ -134,29 +140,45 @@ jobs:
           RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
         run: cargo build --release --locked --target "${{ matrix.target }}" --manifest-path server/Cargo.toml
 
-      - name: Package and upload
+      - name: Collect the release files
         env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
           TARGET: ${{ matrix.target }}
-          PACKAGE: onebyone-${{ github.ref_name }}-${{ matrix.asset }}
         run: |
           exe=onebyone
           if [ "$RUNNER_OS" = Windows ]; then exe=onebyone.exe; fi
           mkdir -p "dist/$PACKAGE"
           cp "server/target/$TARGET/release/$exe" LICENSE-MIT LICENSE-APACHE "dist/$PACKAGE/"
           node .github/scripts/third-party-notices.mjs "$TARGET" "dist/$PACKAGE/THIRD-PARTY-NOTICES.md"
-          cd dist
-          if [ "$RUNNER_OS" = Windows ]; then
-            archive="$PACKAGE.zip"
-            pwsh -NoProfile -Command "Compress-Archive -Path '$PACKAGE' -DestinationPath '$archive'"
-            sha256sum "$archive" > "$archive.sha256"
-          else
-            archive="$PACKAGE.tar.gz"
-            tar -czf "$archive" "$PACKAGE"
-            shasum -a 256 "$archive" > "$archive.sha256"
-          fi
-          gh release upload "$RELEASE_TAG" "$archive" "$archive.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Create the zip
+        if: matrix.format == 'zip'
+        working-directory: dist
+        run: |
+          pwsh -NoProfile -Command "Compress-Archive -Path '$PACKAGE' -DestinationPath '$PACKAGE.zip'"
+          sha256sum "$PACKAGE.zip" > "$PACKAGE.zip.sha256"
+
+      # 没有 Apple 开发者账号，dmg 和里面的程序都没有签名和公证，
+      # 用户第一次运行时会被系统拦截，要在"系统设置 → 隐私与安全性"里点"仍要打开"
+      - name: Create the dmg
+        if: matrix.format == 'dmg'
+        working-directory: dist
+        run: |
+          # GitHub 的 macOS runner 上 hdiutil 偶尔报 "Resource busy"，失败时等 10 秒重试，最多试 5 次
+          for attempt in 1 2 3 4 5; do
+            hdiutil create -volname "$PACKAGE" -srcfolder "$PACKAGE" -fs HFS+ -format UDZO -ov "$PACKAGE.dmg" && break
+            if [ "$attempt" = 5 ]; then exit 1; fi
+            echo "hdiutil 第 $attempt 次失败，10 秒后重试。"
+            sleep 10
+          done
+          shasum -a 256 "$PACKAGE.dmg" > "$PACKAGE.dmg.sha256"
+
+      - name: Upload to the draft release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          ARCHIVE: ${{ env.PACKAGE }}.${{ matrix.format }}
+        run: gh release upload "$RELEASE_TAG" "$ARCHIVE" "$ARCHIVE.sha256" --repo "$GITHUB_REPOSITORY" --clobber
 
   publish:
     name: Publish release
