@@ -6,6 +6,13 @@ description = "CI 用的 Rust 脚本：每个脚本是一个独立的程序，�
 license = "MIT OR Apache-2.0"
 publish = false
 
+[dependencies]
+serde_json = "1.0.154"
+
 [[bin]]
 name = "cargo-test-summary"
 path = "cargo-test-summary.rs"
+
+[[bin]]
+name = "third-party-notices"
+path = "third-party-notices.rs"

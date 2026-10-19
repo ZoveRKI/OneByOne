@@ -145,7 +145,8 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then exe=onebyone.exe; fi
           mkdir -p "dist/$PACKAGE"
           cp "server/target/$TARGET/release/$exe" LICENSE-MIT LICENSE-APACHE "dist/$PACKAGE/"
-          node .github/scripts/third-party-notices.mjs "$TARGET" "dist/$PACKAGE/THIRD-PARTY-NOTICES.md"
+          cargo run --locked --quiet --manifest-path .github/scripts/Cargo.toml --bin third-party-notices -- \
+            "$TARGET" "dist/$PACKAGE/THIRD-PARTY-NOTICES.md"
 
       - name: Create the zip
         if: matrix.format == 'zip'
