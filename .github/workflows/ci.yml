@@ -98,5 +98,15 @@ jobs:
       - name: Backend Build
         run: cargo build --all-targets --locked
 
+      # --no-fail-fast：一个测试目标失败后继续运行其余目标，测试报告里的统计才完整
       - name: Backend Tests
-        run: cargo test --locked
+        id: backend-tests
+        run: cargo test --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/cargo-test-output.txt"
+
+      - name: Backend Test Summary
+        if: ${{ !cancelled() && (steps.backend-tests.outcome == 'success' || steps.backend-tests.outcome == 'failure') }}
+        env:
+          TEST_OUTCOME: ${{ steps.backend-tests.outcome }}
+        run: |
+          cargo run --locked --quiet --manifest-path ../.github/scripts/Cargo.toml --bin cargo-test-summary -- \
+            --outcome "$TEST_OUTCOME" "$RUNNER_TEMP/cargo-test-output.txt"

@@ -2,6 +2,7 @@
 node_modules/
 web/dist/
 server/target/
+.github/scripts/target/
 
 # OneByOne 生成的讲解目录（目录里也自带只写了 * 的 .gitignore）
 .onebyone/

@@ -1,0 +1,11 @@
+[package]
+name = "ci-scripts"
+version = "0.0.0"
+edition = "2024"
+description = "CI 用的 Rust 脚本：每个脚本是一个独立的程序，用 cargo run --bin <名字> 运行"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "cargo-test-summary"
+path = "cargo-test-summary.rs"
