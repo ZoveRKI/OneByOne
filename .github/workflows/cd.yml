@@ -63,6 +63,21 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout the tagged commit and release history
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff@2.14.2
+
+      - name: Generate release notes for the current tag
+        run: git-cliff --offline --no-exec --current --strip header --output RELEASE_NOTES.md
+
       # 先建草稿：所有平台的程序都上传成功后才正式发布，中途失败也不会公开一个缺文件的版本
       - name: Create a draft release
         env:
@@ -73,7 +88,7 @@ jobs:
             printf 'Release %s 已存在，沿用它（重新运行时会出现这种情况）。\n' "$RELEASE_TAG"
           else
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --draft --verify-tag --title "OneByOne $RELEASE_TAG" --generate-notes
+              --draft --verify-tag --title "OneByOne $RELEASE_TAG" --notes-file RELEASE_NOTES.md
           fi
 
   build:

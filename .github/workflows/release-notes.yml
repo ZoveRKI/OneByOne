@@ -1,0 +1,63 @@
+name: Release notes
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Validate PR title and preview release notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate PR title
+        uses: amannn/action-semantic-pull-request@v6
+        with:
+          # doc 与 docs 都归入 Documentation；工作流变更使用 workflow。
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            doc
+            docs
+            style
+            test
+            build
+            workflow
+            chore
+            revert
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Checkout the PR
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff@2.14.2
+
+      # 使用空提交范围加 PR 标题，模拟一次 Squash 合并，避免把分支里的临时提交重复列出来。
+      - name: Preview this PR in the release notes
+        shell: bash
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git-cliff "$BASE_SHA..$BASE_SHA" --offline --no-exec \
+            --with-commit "$PR_TITLE (#$PR_NUMBER)" \
+            --strip header --output "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md" >> "$GITHUB_STEP_SUMMARY"

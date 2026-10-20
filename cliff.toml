@@ -1,0 +1,58 @@
+# PR 用 Squash and merge 合并，提交标题沿用 PR 标题，并保留末尾的 (#编号)。
+[changelog]
+header = ""
+body = """
+{% if version %}
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/ZoveRKI/OneByOne/releases/tag/{{ version }}) ({{ timestamp | date(format="%Y-%m-%d", timezone="Asia/Tokyo") }})
+{% else %}
+## Temp ({{ now(utc=true) | date(format="%Y-%m-%d", timezone="Asia/Tokyo") }})
+{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits -%}
+{% if commit.scope != "win" and commit.scope != "mac" -%}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\n") | first | trim }}
+{% endif -%}
+{% endfor %}
+{% for platform in ["win", "mac"] %}
+{% set platform_commits = commits | filter(attribute="scope", value=platform) %}
+{% if platform_commits | length > 0 %}
+#### {% if platform == "win" %}Windows{% else %}macOS{% endif %}
+{% for commit in platform_commits -%}
+- {{ commit.message | split(pat="\n") | first | trim }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% if version %}
+{% if previous and previous.version %}
+**Full Changelog**: [{{ previous.version }}...{{ version }}](https://github.com/ZoveRKI/OneByOne/compare/{{ previous.version }}...{{ version }})
+{% else %}
+**Full Changelog**: [{{ version }}](https://github.com/ZoveRKI/OneByOne/commits/{{ version }})
+{% endif %}
+{% endif %}
+"""
+trim = true
+format = true
+
+[git]
+conventional_commits = true
+# 历史中不符合规范的提交放入 Other Changes，避免静默漏掉。
+filter_unconventional = false
+split_commits = false
+commit_preprocessors = [
+  { pattern = '\(#([0-9]+)\)$', replace = '([#${1}](https://github.com/ZoveRKI/OneByOne/pull/${1}))' },
+]
+# 注释只用于固定分类顺序，生成正文时会去掉。
+commit_parsers = [
+  { field = "breaking", pattern = "true", group = "<!-- 5 -->⚠️ Breaking Changes" },
+  { message = "^feat", group = "<!-- 1 -->🎉 Features" },
+  { message = "^(perf|refactor)", group = "<!-- 2 -->🚀 Improvements" },
+  { message = "^fix", group = "<!-- 3 -->🛠️ Fixes" },
+  { message = "^docs?", group = "<!-- 4 -->📄 Documentation" },
+  { message = ".*", group = "<!-- 6 -->🧰 Other Changes" },
+]
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = '^v[0-9]+\.[0-9]+\.[0-9]+([+-].*)?$'
+sort_commits = "oldest"
