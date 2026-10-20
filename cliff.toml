@@ -2,8 +2,10 @@
 [changelog]
 header = ""
 body = """
-{% if version %}
-## [{{ version | trim_start_matches(pat="v") }}](https://github.com/ZoveRKI/OneByOne/releases/tag/{{ version }}) ({{ timestamp | date(format="%Y-%m-%d", timezone="Asia/Tokyo") }})
+{% if version and previous and previous.version %}
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/ZoveRKI/OneByOne/compare/{{ previous.version }}...{{ version }}) ({{ timestamp | date(format="%Y-%m-%d", timezone="Asia/Tokyo") }})
+{% elif version %}
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/ZoveRKI/OneByOne/commits/{{ version }}) ({{ timestamp | date(format="%Y-%m-%d", timezone="Asia/Tokyo") }})
 {% else %}
 ## Temp ({{ now(utc=true) | date(format="%Y-%m-%d", timezone="Asia/Tokyo") }})
 {% endif %}
@@ -24,13 +26,6 @@ body = """
 {% endif %}
 {% endfor %}
 {% endfor %}
-{% if version %}
-{% if previous and previous.version %}
-**Full Changelog**: [{{ previous.version }}...{{ version }}](https://github.com/ZoveRKI/OneByOne/compare/{{ previous.version }}...{{ version }})
-{% else %}
-**Full Changelog**: [{{ version }}](https://github.com/ZoveRKI/OneByOne/commits/{{ version }})
-{% endif %}
-{% endif %}
 """
 trim = true
 format = true
