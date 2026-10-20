@@ -1,6 +1,6 @@
 {
   "name": "onebyone-web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "OneByOne 播放器：一步一步看懂 AI 的代码改动",
   "license": "MIT OR Apache-2.0",

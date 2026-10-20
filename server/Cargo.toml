@@ -1,6 +1,6 @@
 [package]
 name = "onebyone"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "OneByOne 命令行和 MCP 服务：把 git 改动切成改动块，检查 AI 写的讲解步骤，生成可以逐步播放的讲解"
 license = "MIT OR Apache-2.0"
