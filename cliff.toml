@@ -45,6 +45,8 @@ commit_preprocessors = [
 ]
 # 注释只用于固定分类顺序，生成正文时会去掉。
 commit_parsers = [
+  # 版本维护提交不写入发布说明，例如 release: v0.1.1。
+  { message = '^release: v[0-9]+\.[0-9]+\.[0-9]+', skip = true },
   { field = "breaking", pattern = "true", group = "<!-- 5 -->⚠️ Breaking Changes" },
   { message = "^feat", group = "<!-- 1 -->🎉 Features" },
   { message = "^(perf|refactor)", group = "<!-- 2 -->🚀 Improvements" },
